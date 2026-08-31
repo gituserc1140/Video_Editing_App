@@ -56,7 +56,15 @@ def _error_detail(body: Dict[str, Any]) -> Optional[str]:
     elif error is not None:
         return str(error)
 
-    return _extract(body, "message", "response.error", "error")
+    message = _extract(body, "message", "error")
+    response_field = body.get("response") if isinstance(body, dict) else None
+
+    if isinstance(response_field, str) and response_field:
+        if message and message != response_field:
+            return f"{message}: {response_field}"
+        return response_field
+
+    return message
 
 
 def _render_output_url(data: Any) -> Optional[str]:
