@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 import requests
 
@@ -26,6 +27,28 @@ def _extract(data: Any, *paths: str) -> Optional[Any]:
         if ok and current is not None:
             return current
     return None
+
+
+def _render_output_url(data: Any) -> Optional[str]:
+    url = _extract(
+        data,
+        "response.url",
+        "response.data.url",
+        "data.attributes.url",
+        "data.url",
+        "url",
+    )
+    if not isinstance(url, str):
+        return None
+
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+
+    edit_api = urlparse(settings.SHOTSTACK_EDIT_BASE_URL)
+    if parsed.netloc == edit_api.netloc and parsed.path.startswith("/edit/"):
+        return None
+    return url
 
 
 def _request(
@@ -213,16 +236,9 @@ def fetch_data(
         status = str(_extract(status_response, "response.status", "data.attributes.status", "data.status", "status") or "").lower()
 
         if status == "done":
-            final_url = _extract(
-                status_response,
-                "response.url",
-                "response.data.url",
-                "data.attributes.url",
-                "data.url",
-                "url",
-            )
+            final_url = _render_output_url(status_response)
             if not final_url:
-                raise RuntimeError("Render finished but no video URL was returned")
+                raise RuntimeError("Render finished but no downloadable video URL was returned")
             return {"status": "done", "url": str(final_url), "render_id": str(render_id)}
 
         if status in {"failed", "error"}:
