@@ -189,7 +189,7 @@ def _build_timeline_payload(
     clip_length = round(trim_end - trim_start, 3)
 
     video_clip: Dict[str, Any] = {
-        "asset": {"type": "video", "src": f"shotstack://{source_id}"},
+        "asset": {"type": "video", "src": f"shotstack://source/{source_id}/original"},
         "start": 0,
         "length": clip_length,
         "trim": round(trim_start, 3),
