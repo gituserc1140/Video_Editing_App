@@ -29,6 +29,36 @@ def _extract(data: Any, *paths: str) -> Optional[Any]:
     return None
 
 
+def _error_detail(body: Dict[str, Any]) -> Optional[str]:
+    error = _extract(body, "response.error", "response.errors", "response.message")
+    if isinstance(error, dict):
+        parts = []
+        name = error.get("name") or error.get("code")
+        if name:
+            parts.append(str(name))
+        details = error.get("details") or error.get("errors")
+        if isinstance(details, list):
+            for item in details:
+                if isinstance(item, dict) and item.get("message"):
+                    parts.append(str(item["message"]))
+                elif item:
+                    parts.append(str(item))
+        elif error.get("message"):
+            parts.append(str(error["message"]))
+        if parts:
+            return "; ".join(parts)
+    elif isinstance(error, list):
+        parts = [str(item.get("message", item)) if isinstance(item, dict) else str(item) for item in error]
+        if parts:
+            return "; ".join(parts)
+    elif isinstance(error, str) and error:
+        return error
+    elif error is not None:
+        return str(error)
+
+    return _extract(body, "message", "response.error", "error")
+
+
 def _render_output_url(data: Any) -> Optional[str]:
     url = _extract(
         data,
@@ -84,7 +114,7 @@ def _request(
         except ValueError:
             body = None
         if isinstance(body, dict):
-            detail = _extract(body, "message", "response.message", "response.error", "error")
+            detail = _error_detail(body)
         if detail:
             raise requests.HTTPError(f"{exc} - {detail}", response=response) from exc
         raise
@@ -149,7 +179,7 @@ def _build_timeline_payload(
     clip_length = round(trim_end - trim_start, 3)
 
     video_clip: Dict[str, Any] = {
-        "asset": {"type": "video", "src": f"shotstack://sources/{source_id}"},
+        "asset": {"type": "video", "src": f"shotstack://{source_id}"},
         "start": 0,
         "length": clip_length,
         "trim": round(trim_start, 3),
