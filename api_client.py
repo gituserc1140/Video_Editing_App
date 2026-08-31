@@ -107,15 +107,28 @@ def _request(
     if extra_headers:
         headers.update(extra_headers)
 
-    response = requests.request(
-        method=method.upper(),
-        url=url,
-        headers=headers,
-        json=json_payload,
-        data=data,
-        timeout=timeout or settings.DEFAULT_TIMEOUT,
-        allow_redirects=False,
-    )
+    try:
+        response = requests.request(
+            method=method.upper(),
+            url=url,
+            headers=headers,
+            json=json_payload,
+            data=data,
+            timeout=timeout or settings.DEFAULT_TIMEOUT,
+            allow_redirects=False,
+        )
+    except requests.exceptions.ConnectionError as exc:
+        raise requests.exceptions.ConnectionError(
+            f"Could not reach {base_url} ({method.upper()} {path}); check your network connection "
+            "and that this environment allows outbound requests to the Shotstack API host",
+            response=getattr(exc, "response", None),
+        ) from exc
+    except requests.exceptions.Timeout as exc:
+        raise requests.exceptions.Timeout(
+            f"Timed out connecting to {base_url} ({method.upper()} {path}); the Shotstack API host "
+            "may be unreachable from this environment",
+            response=getattr(exc, "response", None),
+        ) from exc
     if response.status_code in {301, 302, 303, 307, 308}:
         location = response.headers.get("Location", "an unknown location")
         raise requests.HTTPError(
@@ -133,6 +146,12 @@ def _request(
             body = None
         if isinstance(body, dict):
             detail = _error_detail(body)
+        if response.status_code == 403:
+            mismatch_hint = (
+                "This is often caused by a Sandbox API key being used against the Production API "
+                "(or vice versa) - confirm the key type matches the configured base URL"
+            )
+            detail = f"{detail}; {mismatch_hint}" if detail else mismatch_hint
         if detail:
             raise requests.HTTPError(f"{exc} - {detail}", response=response) from exc
         raise
