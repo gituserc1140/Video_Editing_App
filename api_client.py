@@ -52,7 +52,19 @@ def _request(
         data=data,
         timeout=timeout or settings.DEFAULT_TIMEOUT,
     )
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        detail = None
+        try:
+            body = response.json()
+        except ValueError:
+            body = None
+        if isinstance(body, dict):
+            detail = _extract(body, "message", "response.message", "response.error", "error")
+        if detail:
+            raise requests.HTTPError(f"{exc} - {detail}", response=response) from exc
+        raise
     if not response.text:
         return {}
 
