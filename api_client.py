@@ -182,7 +182,6 @@ def fetch_data(
         RENDER_ENDPOINT,
         api_key,
         json_payload=payload,
-        extra_headers={"Content-Type": "application/json"},
         timeout=settings.DEFAULT_TIMEOUT * 2,
     )
 
