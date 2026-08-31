@@ -108,7 +108,7 @@ def _request(
         timeout=timeout or settings.DEFAULT_TIMEOUT,
         allow_redirects=False,
     )
-    if response.is_redirect:
+    if response.status_code in {301, 302, 303, 307, 308}:
         location = response.headers.get("Location", "an unknown location")
         raise requests.HTTPError(
             f"Shotstack redirected {method.upper()} {path} to {location}; "
