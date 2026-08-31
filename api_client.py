@@ -1,77 +1,228 @@
-"""API client module for external API calls.
+from __future__ import annotations
 
-This module provides a small request wrapper `make_request()` and a minimal
-`fetch_data()` function that returns placeholder data. Replace or extend
-`fetch_data()` with real API logic, authentication, and parsing for your API.
-"""
-
-import os
-import requests
+import time
 from typing import Any, Dict, Optional
+
+import requests
+
 from config import settings
 
 
-def make_request(path: str, params: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None, method: str = "GET", timeout: Optional[int] = None) -> Any:
-    """Simple HTTP request helper.
+INGEST_UPLOAD_ENDPOINT = "/ingest/v1/upload"
+SOURCE_STATUS_ENDPOINT = "/ingest/v1/sources/{source_id}"
+RENDER_ENDPOINT = "/edit/v1/render"
 
-    - Builds a URL from settings.API_BASE_URL and path
-    - Uses requests.request and returns parsed JSON
-    - Raises on HTTP errors
-    """
-    base = settings.API_BASE_URL.rstrip("/")
-    url = f"{base}/{path.lstrip('/')}"
-    timeout = timeout or settings.DEFAULT_TIMEOUT
-    headers = headers or {}
 
-    resp = requests.request(method, url, params=params, headers=headers, timeout=timeout)
-    resp.raise_for_status()
+def _extract(data: Any, *paths: str) -> Optional[Any]:
+    for path in paths:
+        current = data
+        ok = True
+        for key in path.split("."):
+            if isinstance(current, dict) and key in current:
+                current = current[key]
+            else:
+                ok = False
+                break
+        if ok and current is not None:
+            return current
+    return None
 
-    # Attempt to parse JSON, fall back to raw text
+
+def _request(
+    base_url: str,
+    method: str,
+    path: str,
+    api_key: str,
+    *,
+    json_payload: Optional[Dict[str, Any]] = None,
+    data: Optional[bytes] = None,
+    timeout: Optional[int] = None,
+    extra_headers: Optional[Dict[str, str]] = None,
+) -> Any:
+    url = f"{base_url.rstrip('/')}/{path.lstrip('/')}"
+    headers = {"x-api-key": api_key.strip(), "Accept": "application/json"}
+    if extra_headers:
+        headers.update(extra_headers)
+
+    response = requests.request(
+        method=method,
+        url=url,
+        headers=headers,
+        json=json_payload,
+        data=data,
+        timeout=timeout or settings.DEFAULT_TIMEOUT,
+    )
+    response.raise_for_status()
+    if not response.text:
+        return {}
+
     try:
-        return resp.json()
+        return response.json()
     except ValueError:
-        return resp.text
+        return response.text
 
 
-def fetch_data(params: Optional[Dict[str, Any]] = None, api_key: Optional[str] = None) -> Dict[str, Any]:
-    """Minimal example function that returns placeholder data or forwards a real request.
+def _upload_video_source(api_key: str, video_bytes: bytes) -> str:
+    ingest_base = settings.SHOTSTACK_INGEST_BASE_URL
+    upload_response = _request(ingest_base, "POST", INGEST_UPLOAD_ENDPOINT, api_key)
 
-    Replace this implementation with your API-specific calls. Keep the function
-    signature as a single integration point for the UI.
+    upload_url = _extract(upload_response, "data.attributes.url", "data.url", "response.url", "url")
+    source_id = _extract(upload_response, "data.id", "response.id", "id")
 
-    Behavior:
-    - If the configured API_BASE_URL is the default example domain, returns a
-      small static example payload so the UI shows content without a real API.
-    - Otherwise, attempts to call the API (path 'data' by default) and returns
-      the parsed result, or an error payload on failure.
-    """
-    params = params or {}
+    if not upload_url or not source_id:
+        raise RuntimeError("Could not retrieve Shotstack upload URL or source ID")
 
-    # if still pointing at the example placeholder base, return fake data
-    if (not settings.API_BASE_URL) or ("example.com" in settings.API_BASE_URL):
-        return {
-            "title": "Micro-app sample",
-            "description": "Replace api_client.fetch_data() with calls to your API",
-            "items": [
-                {"id": 1, "name": "Example item A", "value": 100},
-                {"id": 2, "name": "Example item B", "value": 200},
-            ],
+    put_response = requests.put(
+        upload_url,
+        data=video_bytes,
+        headers={"Content-Type": "application/octet-stream"},
+        timeout=settings.UPLOAD_TIMEOUT,
+    )
+    put_response.raise_for_status()
+
+    # Wait for source to become ready for edit API use.
+    deadline = time.time() + settings.INGEST_WAIT_TIMEOUT
+    while time.time() < deadline:
+        source_resp = _request(
+            ingest_base,
+            "GET",
+            SOURCE_STATUS_ENDPOINT.format(source_id=source_id),
+            api_key,
+            timeout=settings.DEFAULT_TIMEOUT,
+        )
+        status = str(_extract(source_resp, "data.attributes.status", "data.status", "response.status", "status") or "").lower()
+        if status == "ready":
+            return str(source_id)
+        if status in {"failed", "error"}:
+            message = _extract(source_resp, "data.attributes.error", "message") or "Source ingest failed"
+            raise RuntimeError(str(message))
+        time.sleep(settings.POLL_INTERVAL_SECONDS)
+
+    raise TimeoutError("Timed out waiting for uploaded source to become ready")
+
+
+def _build_timeline_payload(
+    source_id: str,
+    trim_start: float,
+    trim_end: float,
+    text_overlay: str,
+    music_url: Optional[str],
+) -> Dict[str, Any]:
+    if trim_end <= trim_start:
+        raise ValueError("Trim end must be greater than trim start")
+
+    clip_length = round(trim_end - trim_start, 3)
+
+    video_clip: Dict[str, Any] = {
+        "asset": {"type": "video", "src": f"shotstack://sources/{source_id}"},
+        "start": 0,
+        "length": clip_length,
+        "trim": round(trim_start, 3),
+    }
+
+    tracks = [{"clips": [video_clip]}]
+
+    if text_overlay:
+        text_clip = {
+            "asset": {
+                "type": "title",
+                "text": text_overlay,
+                "style": "minimal",
+                "size": "medium",
+            },
+            "start": 0,
+            "length": min(clip_length, 5),
+            "position": "bottom",
         }
+        tracks.append({"clips": [text_clip]})
 
-    # attempt a real API call to the generic 'data' path. Adapt path as needed.
-    headers = {}
-    if api_key:
-        # common pattern: send key as Authorization header; adjust per API
-        headers["Authorization"] = f"Bearer {api_key}"
-    elif settings.API_KEY:
-        headers["Authorization"] = f"Bearer {settings.API_KEY}"
+    if music_url:
+        audio_clip = {
+            "asset": {"type": "audio", "src": music_url},
+            "start": 0,
+            "length": clip_length,
+            "volume": 0.4,
+            "effect": "fadeInFadeOut",
+        }
+        tracks.append({"clips": [audio_clip]})
 
-    try:
-        result = make_request(path="data", params=params, headers=headers)
-        # ensure we return a dict the UI can consume; adapt parsing here
-        if isinstance(result, dict):
-            return result
-        else:
-            return {"title": "API result", "description": "Non-JSON response", "items": [{"id": 1, "name": str(result), "value": 0}]}
-    except Exception as exc:
-        return {"title": "Error", "description": str(exc), "items": []}
+    return {
+        "timeline": {"background": "#000000", "tracks": tracks},
+        "output": {"format": "mp4", "resolution": "sd", "fps": 25},
+    }
+
+
+def fetch_data(
+    api_key: str,
+    video_bytes: bytes,
+    trim_start: float,
+    trim_end: float,
+    text_overlay: str = "",
+    music_url: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Render a Shotstack edit and return final video URL details."""
+    if not api_key or not api_key.strip():
+        raise ValueError("A Shotstack Production API key is required")
+    if not video_bytes:
+        raise ValueError("A video file upload is required")
+
+    source_id = _upload_video_source(api_key=api_key, video_bytes=video_bytes)
+
+    payload = _build_timeline_payload(
+        source_id=source_id,
+        trim_start=trim_start,
+        trim_end=trim_end,
+        text_overlay=text_overlay,
+        music_url=music_url,
+    )
+
+    render_response = _request(
+        settings.SHOTSTACK_EDIT_BASE_URL,
+        "POST",
+        RENDER_ENDPOINT,
+        api_key,
+        json_payload=payload,
+        timeout=settings.DEFAULT_TIMEOUT * 2,
+    )
+
+    render_id = _extract(render_response, "response.id", "data.id", "id")
+    if not render_id:
+        raise RuntimeError("Shotstack render ID was not returned")
+
+    deadline = time.time() + settings.RENDER_WAIT_TIMEOUT
+    while time.time() < deadline:
+        status_response = _request(
+            settings.SHOTSTACK_EDIT_BASE_URL,
+            "GET",
+            f"{RENDER_ENDPOINT}/{render_id}",
+            api_key,
+            timeout=settings.DEFAULT_TIMEOUT,
+        )
+        status = str(_extract(status_response, "response.status", "data.attributes.status", "data.status", "status") or "").lower()
+
+        if status == "done":
+            final_url = _extract(
+                status_response,
+                "response.url",
+                "response.data.url",
+                "data.attributes.url",
+                "data.url",
+                "url",
+            )
+            if not final_url:
+                raise RuntimeError("Render finished but no video URL was returned")
+            return {"status": "done", "url": str(final_url), "render_id": str(render_id)}
+
+        if status in {"failed", "error"}:
+            message = _extract(
+                status_response,
+                "response.error",
+                "response.message",
+                "data.attributes.error",
+                "message",
+            ) or "Shotstack render failed"
+            return {"status": "failed", "error": str(message), "render_id": str(render_id)}
+
+        time.sleep(settings.POLL_INTERVAL_SECONDS)
+
+    raise TimeoutError(f"Timed out waiting for Shotstack render {render_id}")
