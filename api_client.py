@@ -76,7 +76,7 @@ def _upload_video_source(api_key: str, video_bytes: bytes) -> str:
         upload_url,
         data=video_bytes,
         headers={"Content-Type": "application/octet-stream"},
-        timeout=settings.DEFAULT_TIMEOUT * 3,
+        timeout=settings.UPLOAD_TIMEOUT,
     )
     put_response.raise_for_status()
 
@@ -226,4 +226,4 @@ def fetch_data(
 
         time.sleep(settings.POLL_INTERVAL_SECONDS)
 
-    return {"status": "failed", "error": "Timed out waiting for Shotstack render", "render_id": str(render_id)}
+    raise TimeoutError(f"Timed out waiting for Shotstack render {render_id}")
