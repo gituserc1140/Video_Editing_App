@@ -44,6 +44,7 @@ streamlit run app.py
 4. **Render video**
    - Click `Render Video`.
    - The app uploads your source to Shotstack Ingest, submits a Shotstack render timeline, polls render status, then displays the final video.
+   - Render submission uses `POST https://api.shotstack.io/edit/v1/render`; status polling uses `GET /edit/v1/render/{render_id}`. Opening `/edit/v1/render` in a browser sends a GET request and returns a “Not found” response.
 
 5. **Download output**
    - Use the `Download rendered video` link shown after render completion.
