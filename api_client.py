@@ -46,7 +46,7 @@ def _render_output_url(data: Any) -> Optional[str]:
         return None
 
     edit_api = urlparse(settings.SHOTSTACK_EDIT_BASE_URL)
-    if parsed.netloc == edit_api.netloc and parsed.path.startswith("/edit/"):
+    if parsed.netloc == edit_api.netloc:
         return None
     return url
 
