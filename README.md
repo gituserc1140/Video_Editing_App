@@ -1,61 +1,55 @@
-# Micro-app template
+# Shotstack Video Editing Micro-App
 
-This repository is a minimal, generic micro-app template built with Streamlit.
-It preserves a simple architecture intended to be easy to adapt for any
-API-driven micro-application.
+A Streamlit micro-app for simple Shotstack-powered video editing using the Template_App_Private-style structure.
 
-Contents
-- app.py — Streamlit entrypoint that gathers minimal user inputs and calls api_client.fetch_data()
-- api_client.py — API client module with a `make_request()` helper and a minimal `fetch_data()` example
-- ui.py — UI layout module that renders data using Streamlit
-- config/ — configuration module with placeholder settings
-- requirements.txt — minimal dependencies
+## Repository structure
 
-Quick start
-1. Install dependencies
-   pip install -r requirements.txt
+- `app.py` — Streamlit entrypoint
+- `api_client.py` — Shotstack API client (`fetch_data()` uploads, renders, polls)
+- `ui/` — Streamlit UI form and result rendering
+- `static/` — app styling assets
+- `config/` — environment-configurable settings
+- `README.md` — usage instructions
 
-2. Run locally
-   streamlit run app.py
+## Requirements
 
-Using the template
-- The primary integration point is api_client.fetch_data(). Replace the placeholder
-  implementation with calls to your API, including authentication, pagination,
-  and error handling. Keep fetch_data() independent of Streamlit so it remains
-  testable and reusable.
+- Python 3.10+
+- A Shotstack **Production** API key
 
-- config/settings.py contains default values for API_BASE_URL and API_KEY. You
-  can set these using environment variables or provide values at runtime via
-  the Streamlit app input fields.
+Install dependencies:
 
-- ui.py contains simple rendering logic with Streamlit. Modify or replace it to
-  match your UI needs (components, layout, charts, etc.).
+```bash
+pip install -r requirements.txt
+```
 
-How to plug in a new API
-1. Update config/settings.py or set environment variables:
-   - API_BASE_URL: base URL for your API
-   - API_KEY: optional API key (alternatively, prompt users for the key in the UI)
+Run the app:
 
-2. Implement the API calls in api_client.fetch_data() (or add helper functions):
-   - Use the make_request() helper for consistent URL building and timeouts
-   - Add authentication (bearer tokens, API keys, custom headers) as needed
-   - Parse and return a plain Python dict with a shape the UI expects
+```bash
+streamlit run app.py
+```
 
-3. Adjust the UI (ui.py) and app behavior (app.py) to pass parameters and show
-   the results in a user-friendly way.
+## How to use
 
-Extending the template
-- Add tests for api_client.fetch_data() and UI rendering logic.
-- Add a Dockerfile or GitHub Actions workflow for CI and deployment.
-- Replace the placeholder items with richer domain models and components.
+1. **Enter Production API key**
+   - Paste your Shotstack Production API key into the `Shotstack Production API key` field.
 
-License
-Add a LICENSE file appropriate for your project.
+2. **Upload a video**
+   - Upload an MP4/MOV/WEBM/M4V source file.
 
-Example Prompt 
+3. **Configure edits**
+   - Set `Trim start (seconds)` and `Trim end (seconds)`.
+   - Add `Text overlay` (optional).
+   - Add an `Optional music URL` (optional, must be a publicly accessible audio URL).
 
--lets refactor this repo & streamlit app to work with "api and documentation link" so the end user can insert an api key on the front end and interact with the app.
+4. **Render video**
+   - Click `Render Video`.
+   - The app uploads your source to Shotstack Ingest, submits a Shotstack render timeline, polls render status, then displays the final video.
 
-Example Prompt 2
+5. **Download output**
+   - Use the `Download rendered video` link shown after render completion.
 
--Lets use this app repo "Insert App Repo link" as a reference for the streamlit UI design and repo UI design & description but dont copy the architecture or description make it relevant to the brand of the API "insert reference".
+## Notes
+
+- Trim end must be greater than trim start.
+- The app keeps API key entry in the UI (not hard-coded).
+- Polling and timeout behavior can be adjusted via environment variables in `config/settings.py`.

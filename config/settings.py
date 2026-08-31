@@ -1,11 +1,10 @@
-"""Configuration settings with sensible placeholders.
-
-These settings are intentionally simple. For production use consider reading
-secrets from environment variables, a .env file, or a secret manager.
-"""
+"""Configuration settings for the Shotstack Streamlit micro-app."""
 
 import os
 
-API_BASE_URL = os.getenv("API_BASE_URL", "https://api.example.com")
-API_KEY = os.getenv("API_KEY", None)
-DEFAULT_TIMEOUT = int(os.getenv("DEFAULT_TIMEOUT", "10"))
+SHOTSTACK_EDIT_BASE_URL = os.getenv("SHOTSTACK_EDIT_BASE_URL", "https://api.shotstack.io")
+SHOTSTACK_INGEST_BASE_URL = os.getenv("SHOTSTACK_INGEST_BASE_URL", "https://api.shotstack.io")
+DEFAULT_TIMEOUT = int(os.getenv("DEFAULT_TIMEOUT", "30"))
+POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "3"))
+RENDER_WAIT_TIMEOUT = int(os.getenv("RENDER_WAIT_TIMEOUT", "300"))
+INGEST_WAIT_TIMEOUT = int(os.getenv("INGEST_WAIT_TIMEOUT", "180"))

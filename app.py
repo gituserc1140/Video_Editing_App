@@ -1,50 +1,41 @@
-"""Streamlit-based micro-app entrypoint.
+from __future__ import annotations
 
-This lightweight app preserves the original repository architecture but removes
-any Weather-specific logic. It demonstrates how to gather minimal inputs from
-an end user (optional API base URL and API key) and calls api_client.fetch_data()
-as an integration point. The UI is rendered via ui.render_home().
-
-Run locally:
-  pip install -r requirements.txt
-  streamlit run app.py
-"""
+from pathlib import Path
 
 import streamlit as st
-from config import settings
+
 import api_client
-import ui
+from ui import render_editor_form, render_result
 
-st.set_page_config(page_title="Micro-app", layout="centered")
+st.set_page_config(page_title="Shotstack Video Editor", page_icon="🎬", layout="centered")
 
-st.header("Micro-app Template")
-st.write("A lightweight template for building small API-driven micro-apps using Streamlit.")
+css_path = Path(__file__).parent / "static" / "styles.css"
+if css_path.exists():
+    st.markdown(f"<style>{css_path.read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
 
-# allow overriding API base and API key for quick testing; they default to config values
-api_base = st.text_input("API base URL", value=settings.API_BASE_URL or "")
-api_key = st.text_input("API key (optional)", value="", type="password")
+state = render_editor_form()
 
-params_input = st.text_area("Parameters (JSON)", value='{}', help="Optional JSON to pass to fetch_data as params")
-
-if st.button("Fetch data"):
-    # parse params safely
-    import json
-
-    try:
-        params = json.loads(params_input or "{}")
-    except Exception as exc:
-        st.error(f"Could not parse parameters as JSON: {exc}")
-        params = {}
-
-    # Temporary override of settings for this run (non-persistent)
-    if api_base:
-        settings.API_BASE_URL = api_base
-    if api_key:
-        # pass explicit api_key to fetch_data (preferred) and do not modify global settings
-        data = api_client.fetch_data(params=params, api_key=api_key)
+if state["submitted"]:
+    if not state["api_key"]:
+        st.error("Please enter your Shotstack Production API key.")
+    elif state["video_file"] is None:
+        st.error("Please upload a video file.")
+    elif state["trim_end"] <= state["trim_start"]:
+        st.error("Trim end must be greater than trim start.")
     else:
-        data = api_client.fetch_data(params=params)
-
-    ui.render_home(data)
+        with st.spinner("Uploading and rendering video..."):
+            try:
+                result = api_client.fetch_data(
+                    api_key=state["api_key"],
+                    video_bytes=state["video_file"].getvalue(),
+                    trim_start=state["trim_start"],
+                    trim_end=state["trim_end"],
+                    text_overlay=state["text_overlay"],
+                    music_url=state["music_url"],
+                )
+            except Exception as exc:
+                st.error(f"Render request failed: {exc}")
+            else:
+                render_result(result)
 else:
-    st.info("Enter an API base URL or use the default configured in config/settings.py, provide any parameters, then click Fetch data.")
+    st.info("Enter your Production API key, upload a video, configure edits, then click Render Video.")
